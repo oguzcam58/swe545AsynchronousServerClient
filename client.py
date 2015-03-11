@@ -5,15 +5,12 @@ import Queue # Import Queue Module
 
 # ------------------------Client------------------------
 class Client:
-
 	def __init__(self):
 		self.clientSocket = socket.socket() # Create a socket object
 		self.host = socket.gethostname() # Get local machine name
 		self.port = 12345 # Reserve a port for your service.
-
 	def connect(self):
 		self.clientSocket.connect((self.host, self.port))
-
 		while True:
 			request = raw_input("")
 			self.clientSocket.send(request)
@@ -21,11 +18,9 @@ class Client:
 				response = self.clientSocket.recv(1024)
 				if response:
 					print response
-
 		print "Exiting Client"
 		# Quit
 		self.clientSocket.close()
-
 
 # ------------------------Main Program Functionality------------------------
 client = Client()
