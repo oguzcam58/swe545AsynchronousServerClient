@@ -3,12 +3,15 @@ import socket # Import socket module
 import threading # Import threading module
 import Queue # Import Queue Module
 import time # Import Time Module
+from time import sleep # Import Sleep Function
+from random import randint # Import RandomInt Function
 
 # ------------------------Server------------------------
 class Server:
 	serverSocket = socket.socket() # Create a socket object
 	host = socket.gethostname() # Get local machine name
 	port = 12345 # Reserve a port for your service.
+	threadCounter = 0 # Give number to threads
 	def start(self):
 		self.codes = dict()
 		f = open("codes.txt", "r")
@@ -22,7 +25,6 @@ class Server:
 		f.close()
 		print(self.codes)
 
-		global threadCounter
 		self.serverSocket.bind((self.host, self.port)) # Bind to the port
 		self.serverSocket.listen(1000) # Now wait for client connection.
 		print('Server socket is created and it is the listening mode on ' + self.host + ":" + str(self.port))
@@ -30,23 +32,23 @@ class Server:
 			connection, address = self.serverSocket.accept() # Establish connection with client.
 			print('Got connection from ', address)
 			readerQueue = Queue.Queue(10)
-			writerQueue = Queue.Queue(10)
+			loggerQueue = Queue.Queue(10)
 			# ------------------------ReaderThread------------------------
-			threadCounter += 1
-			readerThread = ReaderThread(threadCounter, "Thread-" + str(threadCounter), connection, readerQueue)
+			self.threadCounter += 1
+			readerThread = ReaderThread(self.threadCounter, "Thread-" + str(self.threadCounter), connection, readerQueue, loggerQueue)
 			readerThread.start()
 			# ------------------------WriterThread------------------------
-			threadCounter += 1
-			writerThread = WriterThread(threadCounter, "Thread-" + str(threadCounter), connection, writerQueue)
+			self.threadCounter += 1
+			writerThread = WriterThread(self.threadCounter, "Thread-" + str(self.threadCounter), connection, loggerQueue)
 			writerThread.start()
 			# ------------------------ParserThread------------------------
-			threadCounter += 1
-			parserThread = ParserThread(threadCounter, "Thread-" + str(threadCounter), connection, readerQueue, writerQueue, self.codes)
+			self.threadCounter += 1
+			parserThread = ParserThread(self.threadCounter, "Thread-" + str(self.threadCounter), connection, self.codes, readerQueue, loggerQueue)
 			parserThread.start()
 
 # ------------------------ReaderThread------------------------
 class ReaderThread(threading.Thread):
-	def __init__(self, threadID, name, connection, queue):
+	def __init__(self, threadID, name, connection, queue, logger):
 		threading.Thread.__init__(self)
 		self.threadID = threadID
 		self.name = name
@@ -55,33 +57,40 @@ class ReaderThread(threading.Thread):
 	def run(self):
 		print("Starting ReaderThread " + str(self.threadID) + " " + self.name)
 		while True:
-			data = self.connection.recv(1024)
-			if not data:
-				continue
-			self.queue.put(data)
+			try:
+				data = self.connection.recv(1024)
+				if not data:
+					continue
+				if data == "OK":
+					continue
+				self.queue.put(data)
+			except:
+				break
 
 # ------------------------WriterThread------------------------
 class WriterThread(threading.Thread):
-	def __init__(self, threadID, name, connection, queue):
+	def __init__(self, threadID, name, connection, logger):
 		threading.Thread.__init__(self)
 		self.threadID = threadID
 		self.name = name
 		self.connection = connection
-		self.queue = queue
 	def run(self):
 		print("Starting WriterThread " + str(self.threadID) + " " + self.name)
 		while True:
-			print("Printing data got from client" + str(self.queue.get()))
+			sleep(randint(10, 100))
+			try:
+				self.connection.send("NOW" + " " + time.ctime(time.time()))
+			except:
+				break
 
-# ------------------------WriterThread------------------------
+# ------------------------ParserThread------------------------
 class ParserThread(threading.Thread):
-	def __init__(self, threadID, name, connection, readerQueue, writerQueue, codes):
+	def __init__(self, threadID, name, connection, codes, readerQueue, logger):
 		threading.Thread.__init__(self)
 		self.threadID = threadID
 		self.name = name
 		self.connection = connection
 		self.readerQueue = readerQueue
-		self.writerQueue = writerQueue
 		self.codes = codes
 	def run(self):
 		print("Starting ParserThread " + str(self.threadID) + " " + self.name)
@@ -110,6 +119,20 @@ class ParserThread(threading.Thread):
 				response = "ERR"
 				self.connection.send(response)
 
-threadCounter = 0 # Give number to threads
+# ------------------------LoggerThread------------------------
+class LoggerThread(threading.Thread):
+	def __init__(self, threadID, name, loggerQueue):
+		threading.Thread.__init__(self)
+		self.threadID = threadID
+		self.name = name
+		self.loggerQueue = loggerQueue
+	def run(self):
+		print("Starting LoggerThread " + str(self.threadID) + " " + self.name)
+		f = open("log.txt", "a")
+		while True:
+			f.write(self.loggerQueue.get())
+		f.close()
+
+# ------------------------Main Program Functionality------------------------
 serverThread = Server()
 serverThread.start()
