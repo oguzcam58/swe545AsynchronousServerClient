@@ -5,6 +5,7 @@ import Queue # Import Queue Module
 import time # Import Time Module
 from time import sleep # Import Sleep Function
 from random import randint # Import RandomInt Function
+import os
 
 # ------------------------Server------------------------
 class Server:
@@ -23,45 +24,55 @@ class Server:
 			else:
 				raise Exception("Error in codes file!")
 		f.close()
-		print(self.codes)
+		# ------------------------ServerThread------------------------
+		self.threadCounter += 1
+		self.serverThread = ServerThread(self.threadCounter, "Thread-" + str(self.threadCounter))
+		self.serverThread.start()
+		# ------------------------LoggerThread------------------------
+		self.threadCounter += 1
+		self.loggerThread = LoggerThread(self.threadCounter, "Thread-" + str(self.threadCounter))
+		self.loggerThread.start()
 
 		self.serverSocket.bind((self.host, self.port)) # Bind to the port
 		self.serverSocket.listen(1000) # Now wait for client connection.
 		print('Server socket is created and it is the listening mode on ' + self.host + ":" + str(self.port))
-		while True:
+		while not exitFlag:
 			connection, address = self.serverSocket.accept() # Establish connection with client.
-			print('Got connection from ', address)
+			log(address, self.port, "Got connection")
 			readerQueue = Queue.Queue(10)
-			loggerQueue = Queue.Queue(10)
 			# ------------------------ReaderThread------------------------
 			self.threadCounter += 1
-			readerThread = ReaderThread(self.threadCounter, "Thread-" + str(self.threadCounter), connection, readerQueue, loggerQueue)
+			readerThread = ReaderThread(self.threadCounter, "Thread-" + str(self.threadCounter), connection, address, self.port, readerQueue)
 			readerThread.start()
 			# ------------------------WriterThread------------------------
 			self.threadCounter += 1
-			writerThread = WriterThread(self.threadCounter, "Thread-" + str(self.threadCounter), connection, loggerQueue)
+			writerThread = WriterThread(self.threadCounter, "Thread-" + str(self.threadCounter), connection, address, self.port)
 			writerThread.start()
 			# ------------------------ParserThread------------------------
 			self.threadCounter += 1
-			parserThread = ParserThread(self.threadCounter, "Thread-" + str(self.threadCounter), connection, self.codes, readerQueue, loggerQueue)
+			parserThread = ParserThread(self.threadCounter, "Thread-" + str(self.threadCounter), connection, address, self.port, self.codes, readerQueue)
 			parserThread.start()
 
 # ------------------------ReaderThread------------------------
 class ReaderThread(threading.Thread):
-	def __init__(self, threadID, name, connection, queue, logger):
+	def __init__(self, threadID, name, connection, address, port, queue):
 		threading.Thread.__init__(self)
 		self.threadID = threadID
 		self.name = name
 		self.connection = connection
+		self.address = address
+		self.port = port
 		self.queue = queue
 	def run(self):
 		print("Starting ReaderThread " + str(self.threadID) + " " + self.name)
-		while True:
+		while not exitFlag:
 			try:
 				data = self.connection.recv(1024)
 				if not data:
 					continue
-				if data == "OK":
+				else:
+					log(self.address, self.port, "Data received as " + data)
+				if data == "TNX":
 					continue
 				self.queue.put(data)
 			except:
@@ -69,33 +80,40 @@ class ReaderThread(threading.Thread):
 
 # ------------------------WriterThread------------------------
 class WriterThread(threading.Thread):
-	def __init__(self, threadID, name, connection, logger):
+	def __init__(self, threadID, name, connection, address, port):
 		threading.Thread.__init__(self)
 		self.threadID = threadID
 		self.name = name
 		self.connection = connection
+		self.address = address
+		self.port = port
 	def run(self):
 		print("Starting WriterThread " + str(self.threadID) + " " + self.name)
-		while True:
+		while not exitFlag:
 			sleep(randint(10, 100))
 			try:
-				self.connection.send("NOW" + " " + time.ctime(time.time()))
+				sendTime = time.ctime(time.time())
+				self.connection.send("NOW" + " " + sendTime)
+				log(self.address, self.port, "Sent time to Client as " + sendTime)
 			except:
 				break
 
 # ------------------------ParserThread------------------------
 class ParserThread(threading.Thread):
-	def __init__(self, threadID, name, connection, codes, readerQueue, logger):
+	def __init__(self, threadID, name, connection, address, port, codes, readerQueue):
 		threading.Thread.__init__(self)
 		self.threadID = threadID
 		self.name = name
 		self.connection = connection
-		self.readerQueue = readerQueue
+		self.address = address
+		self.port = port
 		self.codes = codes
+		self.readerQueue = readerQueue
 	def run(self):
 		print("Starting ParserThread " + str(self.threadID) + " " + self.name)
-		while True:
+		while not exitFlag:
 			data = self.readerQueue.get()
+			response = ""
 			if not (len(data) == 3 or (len(data) > 3 and data[3:4] == " ")):
 				response = "ERR"
 				self.connection.send(response)
@@ -118,21 +136,43 @@ class ParserThread(threading.Thread):
 			else:
 				response = "ERR"
 				self.connection.send(response)
+			log(self.address, self.port, "Response sent to client as " + response)
 
 # ------------------------LoggerThread------------------------
 class LoggerThread(threading.Thread):
-	def __init__(self, threadID, name, loggerQueue):
+	def __init__(self, threadID, name):
 		threading.Thread.__init__(self)
 		self.threadID = threadID
 		self.name = name
-		self.loggerQueue = loggerQueue
 	def run(self):
+		global loggerQueue
 		print("Starting LoggerThread " + str(self.threadID) + " " + self.name)
-		f = open("log.txt", "a")
-		while True:
-			f.write(self.loggerQueue.get())
+		f = open("log.txt", "a+")
+		while not exitFlag:
+			f.write(loggerQueue.get())
+			f.flush()
+			os.fsync(f)
 		f.close()
 
+# ------------------------ServerThread------------------------
+class ServerThread(threading.Thread):
+	def __init__(self, threadID, name):
+		threading.Thread.__init__(self)
+		self.threadID = threadID
+		self.name = name
+	def run(self):
+		global exitFlag
+		print("Starting ServerThread " + str(self.threadID) + " " + self.name)
+		entry = raw_input("Write 'EXIT' to stop server ")
+		if entry == "EXIT":
+			log(None, None, "Server is halted by admin")
+			exitFlag = True
+
 # ------------------------Main Program Functionality------------------------
+loggerQueue = Queue.Queue(10)
+exitFlag = False
+def log(address, port, msg):
+	loggerQueue.put(time.ctime(time.time()) + ":" + str(address) + ":" + str(port) + ":" + msg + "\n")
+
 serverThread = Server()
 serverThread.start()

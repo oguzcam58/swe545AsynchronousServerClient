@@ -38,7 +38,7 @@ class ReaderThread(threading.Thread):
 				if data[0:3] == "BYE":
 					exitFlag = False
 				if data[0:3] == "NOW":
-					self.connection.send("OK")
+					self.connection.send("TNX")
 				wait = False
 
 # ------------------------WriterThread------------------------
