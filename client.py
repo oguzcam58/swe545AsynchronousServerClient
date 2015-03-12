@@ -12,7 +12,7 @@ class Client:
 	def connect(self):
 		self.clientSocket.connect((self.host, self.port))
 		while True:
-			request = raw_input("Please enter what you want?")
+			request = raw_input("Please enter what you want? ")
 			self.clientSocket.send(request)
 			while True:
 				response = self.clientSocket.recv(1024)
